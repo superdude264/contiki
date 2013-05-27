@@ -35,8 +35,36 @@
 #ifndef NODE_ID_H_
 #define NODE_ID_H_
 
+#define NODE_ID_OFFSET                  0
+#define NODE_ID_SEED_OFFSET             2
+#define NODE_ID_KEYING_MATERIAL_OFFSET 18
+
+/**
+ * \brief Restores the node id.
+ */
 void node_id_restore(void);
+
+/**
+ * \brief Burns node_id.
+ */
 void node_id_burn(unsigned short node_id);
+
+/**
+ * \brief Burns configuration data, including node id.
+ */
+void node_id_burn_data(void *data, unsigned short data_len);
+
+/**
+ * \brief Restores specific configuration data.
+ */
+void node_id_restore_data(void *result,
+    unsigned short result_len,
+    unsigned short offset);
+
+/**
+ * \brief Erases all configuration data, including node id.
+ */
+void node_id_erase_data(void);
 
 extern unsigned short node_id;
 

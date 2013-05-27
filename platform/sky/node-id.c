@@ -40,32 +40,52 @@
 #include "sys/node-id.h"
 #include "contiki-conf.h"
 #include "dev/xmem.h"
+#include <string.h>
+
+#define CHECK_LEN 2
 
 unsigned short node_id = 0;
+static const unsigned char check[CHECK_LEN] = { 0xad , 0xde };
 
 /*---------------------------------------------------------------------------*/
 void
 node_id_restore(void)
 {
-  unsigned char buf[4];
-  xmem_pread(buf, 4, NODE_ID_XMEM_OFFSET);
-  if(buf[0] == 0xad &&
-     buf[1] == 0xde) {
-    node_id = (buf[2] << 8) | buf[3];
-  } else {
+  unsigned char buf[CHECK_LEN];
+  xmem_pread(buf, CHECK_LEN, NODE_ID_XMEM_OFFSET);
+  
+  if(memcmp(buf, check, CHECK_LEN)) {
     node_id = 0;
+  } else {
+    node_id_restore_data(&node_id, sizeof(node_id), NODE_ID_OFFSET);
   }
 }
 /*---------------------------------------------------------------------------*/
 void
 node_id_burn(unsigned short id)
 {
-  unsigned char buf[4];
-  buf[0] = 0xad;
-  buf[1] = 0xde;
-  buf[2] = id >> 8;
-  buf[3] = id & 0xff;
+  node_id_burn_data(&id, sizeof(id));
+}
+/*---------------------------------------------------------------------------*/
+void
+node_id_burn_data(void *data, unsigned short data_len)
+{
+  node_id_erase_data();
+  xmem_pwrite(check, CHECK_LEN, NODE_ID_XMEM_OFFSET);
+  xmem_pwrite(data, data_len, NODE_ID_XMEM_OFFSET + CHECK_LEN);
+}
+/*---------------------------------------------------------------------------*/
+void
+node_id_restore_data(void *result,
+    unsigned short result_len,
+    unsigned short offset)
+{
+  xmem_pread(result, result_len, NODE_ID_XMEM_OFFSET + CHECK_LEN + offset);
+}
+/*---------------------------------------------------------------------------*/
+void
+node_id_erase_data(void)
+{
   xmem_erase(XMEM_ERASE_UNIT_SIZE, NODE_ID_XMEM_OFFSET);
-  xmem_pwrite(buf, 4, NODE_ID_XMEM_OFFSET);
 }
 /*---------------------------------------------------------------------------*/
