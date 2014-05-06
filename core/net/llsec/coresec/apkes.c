@@ -90,6 +90,14 @@
 #define HELLOACK_IDENTIFIER       0x0B
 #define ACK_IDENTIFIER            0x0C
 
+#if EBEAP_WITH_ENCRYPTION
+/* command frame identifier || local index of receiver || broadcast key */
+#define HELLOACK_LEN              (1 + 1 + NEIGHBOR_BROADCAST_KEY_LEN)
+#else /* EBEAP_WITH_ENCRYPTION */
+/* command frame identifier || local index of receiver || short address */
+#define HELLOACK_LEN              (1 + 1 + NEIGHBOR_SHORT_ADDR_LEN)
+#endif /* EBEAP_WITH_ENCRYPTION */
+
 #define CHALLENGE_LEN             (NEIGHBOR_PAIRWISE_KEY_LEN/2)
 
 #define DEBUG 0
@@ -118,28 +126,10 @@ static llsec_on_bootstrapped_t on_bootstrapped;
 
 /*---------------------------------------------------------------------------*/
 static void
-generate_pairwise_key(struct neighbor *neighbor, uint8_t *shared_secret)
+generate_pairwise_key(uint8_t *result, uint8_t *shared_secret)
 {
   CORESEC_SET_PAIRWISE_KEY(shared_secret);
-  aes_128_padded_encrypt(neighbor->metadata, NEIGHBOR_PAIRWISE_KEY_LEN);
-}
-/*---------------------------------------------------------------------------*/
-static uint8_t *
-get_pairwise_key_with(struct neighbor *neighbor)
-{
-  uint8_t *key;
-  
-  if(neighbor->status == NEIGHBOR_AWAITING_ACK) {
-    /* sending a message to a tentative neighbor --> must be HELLOACK */
-    key = APKES_SCHEME.get_secret_with_hello_sender(&neighbor->ids);
-    if(key) {
-      generate_pairwise_key(neighbor, key);
-    }
-  } else {
-    key = neighbor->pairwise_key;
-  }
-  
-  return key;
+  aes_128_padded_encrypt(result, NEIGHBOR_PAIRWISE_KEY_LEN);
 }
 /*---------------------------------------------------------------------------*/
 static void
@@ -222,6 +212,7 @@ static void
 send_helloack(struct neighbor *receiver)
 {
   uint8_t *payload;
+  uint8_t *secret;
   
   payload = coresec_prepare_command_frame(HELLOACK_IDENTIFIER, &receiver->ids.extended_addr);
 #if EBEAP_WITH_ENCRYPTION
@@ -234,33 +225,45 @@ send_helloack(struct neighbor *receiver)
 #endif /* EBEAP_WITH_ENCRYPTION */
   
   /* write payload */
-  memcpy(payload, receiver->metadata, 2 * CHALLENGE_LEN);
-  payload += 2 * CHALLENGE_LEN;
   memcpy(payload, &receiver->local_index, 1);
-  payload += 1;
 #if EBEAP_WITH_ENCRYPTION
-  memcpy(payload, ebeap_broadcast_key, NEIGHBOR_BROADCAST_KEY_LEN);
+  memcpy(payload + 1, ebeap_broadcast_key, NEIGHBOR_BROADCAST_KEY_LEN);
 #else /* EBEAP_WITH_ENCRYPTION */
-  memcpy(payload, &node_id, NEIGHBOR_SHORT_ADDR_LEN);
+  memcpy(payload + 1, &node_id, NEIGHBOR_SHORT_ADDR_LEN);
 #endif /* EBEAP_WITH_ENCRYPTION */
   
-  packetbuf_set_datalen(1            /* command frame identifier */
-      + 2 * CHALLENGE_LEN            /* Neighbor's challenge || Our challenge */
-      + 1                            /* local index of receiver */
-#if EBEAP_WITH_ENCRYPTION
-      + NEIGHBOR_BROADCAST_KEY_LEN); /* broadcast key */
-#else /* EBEAP_WITH_ENCRYPTION */
-      + NEIGHBOR_SHORT_ADDR_LEN);    /* short address */
-#endif /* EBEAP_WITH_ENCRYPTION */
+  packetbuf_set_datalen(HELLOACK_LEN);
+  
+  /* put our challenge right after the not-yet-written CCM*-MIC */
+  memcpy(payload - 1 + HELLOACK_LEN + CORESEC_UNICAST_MIC_LENGTH,
+      receiver->metadata + CHALLENGE_LEN,
+      CHALLENGE_LEN);
+  
+  secret = APKES_SCHEME.get_secret_with_hello_sender(&receiver->ids);
+  if(!secret) {
+    PRINTF("apkes: could not get secret with HELLO sender\n");
+    return;
+  }
+  generate_pairwise_key(receiver->pairwise_key, secret);
   
   coresec_send_command_frame();
+}
+/*---------------------------------------------------------------------------*/
+static void
+on_frame_secured(struct neighbor *neighbor)
+{
+  if(neighbor->status == NEIGHBOR_AWAITING_ACK) {
+    /* --> must be HELLOACK */
+    packetbuf_set_datalen(HELLOACK_LEN + CORESEC_UNICAST_MIC_LENGTH + CHALLENGE_LEN);
+  }
 }
 /*---------------------------------------------------------------------------*/
 static void
 on_helloack(struct neighbor *sender, uint8_t *payload)
 {
   struct neighbor_ids ids;
-  uint8_t *key;
+  uint8_t *secret;
+  uint8_t key[NEIGHBOR_PAIRWISE_KEY_LEN];
 #if EBEAP_WITH_ENCRYPTION
   uint16_t short_addr;
 #endif /* EBEAP_WITH_ENCRYPTION */
@@ -272,13 +275,26 @@ on_helloack(struct neighbor *sender, uint8_t *payload)
   neighbor_update_ids(&ids, &short_addr);
 #else /* EBEAP_WITH_ENCRYPTION */
   neighbor_update_ids(&ids,
-      payload + 2 * CHALLENGE_LEN + 1 + NEIGHBOR_BROADCAST_KEY_LEN);
+      payload + 1);
 #endif /* EBEAP_WITH_ENCRYPTION */
   
-  key = APKES_SCHEME.get_secret_with_helloack_sender(&ids);
-  if(!key
-      || !coresec_decrypt_verify_unicast(key)
-      || (memcmp(our_challenge, payload, CHALLENGE_LEN) != 0)) {
+  secret = APKES_SCHEME.get_secret_with_helloack_sender(&ids);
+  if(!secret) {
+    PRINTF("apkes: could not get secret with HELLOACK sender\n");
+    return;
+  }
+  
+  /* copy challenges and generate key */
+  memcpy(key,
+      our_challenge,
+      CHALLENGE_LEN);
+  memcpy(key + CHALLENGE_LEN,
+      payload - 1 + HELLOACK_LEN + CORESEC_UNICAST_MIC_LENGTH,
+      CHALLENGE_LEN);
+  packetbuf_set_datalen(packetbuf_datalen() - CHALLENGE_LEN);
+  
+  generate_pairwise_key(key, secret);
+  if(!coresec_decrypt_verify_unicast(key)) {
     PRINTF("apkes: Invalid HELLOACK\n");
     return;
   }
@@ -303,11 +319,9 @@ on_helloack(struct neighbor *sender, uint8_t *payload)
     }
   }
   
-  memcpy(sender->metadata, payload, 2 * CHALLENGE_LEN);
-  generate_pairwise_key(sender, key);
+  memcpy(sender->pairwise_key, key, NEIGHBOR_PAIRWISE_KEY_LEN);
   sender->ids = ids;
-  neighbor_update(sender, payload + 2 * CHALLENGE_LEN);
-  
+  neighbor_update(sender, payload);
   send_ack(sender);
 }
 /*---------------------------------------------------------------------------*/
@@ -327,13 +341,20 @@ send_ack(struct neighbor *receiver)
   
   /* write payload */
   memcpy(payload, &receiver->local_index, 1);
+  payload += 1;
 #if EBEAP_WITH_ENCRYPTION
   memcpy(payload + 1, ebeap_broadcast_key, NEIGHBOR_BROADCAST_KEY_LEN);
-#endif /* EBEAP_WITH_ENCRYPTION */
+  payload += NEIGHBOR_BROADCAST_KEY_LEN;
+#endif /* LLSEC802154_USES_ENCRYPTION */
+  /* TODO ACKs should be sent with short address as source address */ 
+  memcpy(payload, &node_id, NEIGHBOR_SHORT_ADDR_LEN);
   
   packetbuf_set_datalen(1            /* command frame identifier */
       + 1                            /* local index of receiver */
-      + NEIGHBOR_BROADCAST_KEY_LEN); /* broadcast key */
+#if LLSEC802154_USES_ENCRYPTION
+      + NEIGHBOR_BROADCAST_KEY_LEN   /* broadcast key */
+#endif /* LLSEC802154_USES_ENCRYPTION */
+      + NEIGHBOR_SHORT_ADDR_LEN);    /* short address */
   
   coresec_send_command_frame();
 }
@@ -348,6 +369,7 @@ on_ack(struct neighbor *sender, uint8_t *payload)
       || !coresec_decrypt_verify_unicast(sender->pairwise_key)) {
     PRINTF("apkes: Invalid ACK\n");
   } else {
+    neighbor_update_ids(&sender->ids, payload + 1 + NEIGHBOR_BROADCAST_KEY_LEN);
     neighbor_update(sender, payload);
   }
 }
@@ -414,7 +436,7 @@ const struct coresec_scheme apkes_coresec_scheme = {
   is_bootstrapped,
   bootstrap,
   on_command_frame,
-  get_pairwise_key_with
+  on_frame_secured
 };
 /*---------------------------------------------------------------------------*/
 

@@ -100,8 +100,8 @@ struct coresec_scheme {
       struct neighbor *sender,
       uint8_t *payload);
   
-  /** Returns NULL <-> no pairwise key available */
-  uint8_t *(* get_pairwise_key_with)(struct neighbor *neighbor);
+  /** Called right after securing a frame */
+  void (* on_frame_secured)(struct neighbor *neighbor);
 };
 
 extern const struct coresec_scheme CORESEC_SCHEME;

@@ -174,7 +174,6 @@ on_frame_created(void)
 {
   uint8_t sec_lvl;
   struct neighbor *neighbor;
-  uint8_t *key;
   uint8_t *dataptr;
   uint8_t datalen;
   
@@ -185,15 +184,10 @@ on_frame_created(void)
       return 0;
     }
     
-    key = CORESEC_SCHEME.get_pairwise_key_with(neighbor);
-    if(!key) {
-      return 0;
-    }
-    
     dataptr = packetbuf_dataptr();
     datalen = packetbuf_datalen();
     
-    CORESEC_SET_PAIRWISE_KEY(key);
+    CORESEC_SET_PAIRWISE_KEY(neighbor->pairwise_key);
     CCM.mic(linkaddr_node_addr.u8, dataptr + datalen, CORESEC_UNICAST_MIC_LENGTH);
 #if LLSEC802154_USES_ENCRYPTION
     if(sec_lvl & (1 << 2)) {
@@ -201,6 +195,7 @@ on_frame_created(void)
     }
 #endif /* LLSEC802154_USES_ENCRYPTION */
     packetbuf_set_datalen(datalen + CORESEC_UNICAST_MIC_LENGTH);
+    CORESEC_SCHEME.on_frame_secured(neighbor);
   }
   return 1;
 }
