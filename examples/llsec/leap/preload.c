@@ -53,20 +53,19 @@ static struct etimer etimer;
 static void
 preload(void)
 {
-  uint8_t data[sizeof(node_id) + PRNG_SEED_LEN + LEAP_MASTER_KEY_LEN]
-      = { 0x00 , 0x00 ,
-          0xAA , 0xAA , 0xAA , 0xAA ,
+  uint8_t seed[PRNG_SEED_LEN]
+      = { 0xAA , 0xAA , 0xAA , 0xAA ,
           0xBB , 0xBB , 0xBB , 0xBB ,
           0xCC , 0xCC , 0xCC , 0xCC ,
-          0xDD , 0xDD , 0xDD , 0xDD ,
-          
-          0x11 , 0x11 , 0x11 , 0x11 ,
+          0xDD , 0xDD , 0xDD , 0xDD };
+  uint8_t master_key[LEAP_MASTER_KEY_LEN]
+      = { 0x11 , 0x11 , 0x11 , 0x11 ,
           0x22 , 0x22 , 0x22 , 0x22 ,
           0x33 , 0x33 , 0x33 , 0x33 ,
           0x44 , 0x44 , 0x44 , 0x44 };
-  
-  memcpy(data, &node_id, sizeof(node_id));
-  node_id_burn_data(data, sizeof(node_id) + PRNG_SEED_LEN + LEAP_MASTER_KEY_LEN);
+  node_id_burn(node_id);
+  node_id_burn_append(seed, PRNG_SEED_LEN);
+  node_id_burn_append(master_key, LEAP_MASTER_KEY_LEN);
 }
 /*---------------------------------------------------------------------------*/
 static void

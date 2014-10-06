@@ -52,7 +52,7 @@ void node_id_burn(unsigned short node_id);
 /**
  * \brief Burns configuration data, including node id.
  */
-void node_id_burn_data(void *data, unsigned short data_len);
+void node_id_burn_append(void *data, unsigned short data_len);
 
 /**
  * \brief Restores specific configuration data.

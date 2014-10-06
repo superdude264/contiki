@@ -46,6 +46,7 @@
 
 unsigned short node_id = 0;
 static const unsigned char check[CHECK_LEN] = { 0xad , 0xde };
+static unsigned short offset;
 
 /*---------------------------------------------------------------------------*/
 void
@@ -64,15 +65,17 @@ node_id_restore(void)
 void
 node_id_burn(unsigned short id)
 {
-  node_id_burn_data(&id, sizeof(id));
+  node_id_erase_data();
+  xmem_pwrite(check, CHECK_LEN, NODE_ID_XMEM_OFFSET);
+  xmem_pwrite(&id, sizeof(id), NODE_ID_XMEM_OFFSET + CHECK_LEN);
+  offset = NODE_ID_XMEM_OFFSET + CHECK_LEN + sizeof(id);
 }
 /*---------------------------------------------------------------------------*/
 void
-node_id_burn_data(void *data, unsigned short data_len)
+node_id_burn_append(void *data, unsigned short data_len)
 {
-  node_id_erase_data();
-  xmem_pwrite(check, CHECK_LEN, NODE_ID_XMEM_OFFSET);
-  xmem_pwrite(data, data_len, NODE_ID_XMEM_OFFSET + CHECK_LEN);
+  xmem_pwrite(data, data_len, offset);
+  offset += data_len;
 }
 /*---------------------------------------------------------------------------*/
 void
