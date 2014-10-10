@@ -45,13 +45,17 @@
 
 struct framer {
 
+  /** Returns the header length */
   int (* length)(void);
+  
+  /** Creates the frame header */
   int (* create)(void);
   
-  /** Creates the frame and calls LLSEC.on_frame_created() */
+  /** Creates the frame header and calls LLSEC.on_frame_created() */
   int (* create_and_secure)(void);
+  
+  /** Parses the frame header */
   int (* parse)(void);
-
 };
 
 int framer_canonical_create_and_secure(void);
