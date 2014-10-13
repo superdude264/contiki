@@ -410,7 +410,6 @@ PROCESS_THREAD(apkes_process, ev, data)
     }
   }
   
-  APKES_SCHEME.on_done();
   on_bootstrapped();
   on_bootstrapped = NULL;
   

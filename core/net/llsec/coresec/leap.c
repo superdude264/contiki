@@ -44,17 +44,33 @@
 
 #include "net/llsec/coresec/leap.h"
 #include "sys/node-id.h"
+#include "sys/ctimer.h"
 #include "lib/aes-128.h"
 #include <string.h>
 
-#define INDIVIDUAL_KEY_LEN              (LEAP_MASTER_KEY_LEN)
+#ifdef LEAP_CONF_KEY_ERASURE_DELAY
+#define KEY_ERASURE_DELAY  LEAP_CONF_KEY_ERASURE_DELAY
+#else /* LEAP_CONF_KEY_ERASURE_DELAY */
+#define KEY_ERASURE_DELAY  (2 * 60 * CLOCK_SECOND)
+#endif /* LEAP_CONF_KEY_ERASURE_DELAY */
+
+#define INDIVIDUAL_KEY_LEN (LEAP_MASTER_KEY_LEN)
+
+#define DEBUG 0
+#if DEBUG
+#include <stdio.h>
+#define PRINTF(...) printf(__VA_ARGS__)
+#else /* DEBUG */
+#define PRINTF(...)
+#endif /* DEBUG */
 
 /* Cryptographic material */
 static uint8_t master_key[LEAP_MASTER_KEY_LEN];
 static uint8_t individual_key[INDIVIDUAL_KEY_LEN];
 /* Used for decrypting and verifying HELLOACKs */
 static uint8_t temporary_individual_key[INDIVIDUAL_KEY_LEN];
-static int erased;
+/* Schedules the erasure of the master key */
+struct ctimer erasure_timer;
 
 /*---------------------------------------------------------------------------*/
 static void
@@ -75,7 +91,7 @@ get_secret_with_hello_sender(struct neighbor_ids *ids)
 static uint8_t *
 get_secret_with_helloack_sender(struct neighbor_ids *ids)
 {
-  if(erased) {
+  if(ctimer_expired(&erasure_timer)) {
     return NULL;
   }
   
@@ -85,26 +101,27 @@ get_secret_with_helloack_sender(struct neighbor_ids *ids)
 }
 /*---------------------------------------------------------------------------*/
 static void
+erase(void *ptr)
+{
+  memset(master_key, 0, LEAP_MASTER_KEY_LEN);
+  memset(temporary_individual_key, 0, INDIVIDUAL_KEY_LEN);
+  
+  PRINTF("leap: erased master key\n");
+}
+/*---------------------------------------------------------------------------*/
+static void
 init(void)
 {
   node_id_restore_data(master_key, LEAP_MASTER_KEY_LEN, NODE_ID_KEYING_MATERIAL_OFFSET);
   node_id_erase_data();
   generate_individual_key(individual_key, &linkaddr_node_addr);
-}
-/*---------------------------------------------------------------------------*/
-static void
-on_done(void)
-{
-  memset(master_key, 0, LEAP_MASTER_KEY_LEN);
-  memset(temporary_individual_key, 0, INDIVIDUAL_KEY_LEN);
-  erased = 1;
+  ctimer_set(&erasure_timer, KEY_ERASURE_DELAY, erase, NULL);
 }
 /*---------------------------------------------------------------------------*/
 const struct apkes_scheme leap_apkes_scheme = {
   init,
   get_secret_with_hello_sender,
-  get_secret_with_helloack_sender,
-  on_done
+  get_secret_with_helloack_sender
 };
 /*---------------------------------------------------------------------------*/
 

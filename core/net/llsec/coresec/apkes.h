@@ -59,7 +59,7 @@
  */
 struct apkes_scheme {
   
-  /** Called once at startup */
+  /** Called at startup */
   void (* init)(void);
   
   /**
@@ -73,9 +73,6 @@ struct apkes_scheme {
    * \retval NULL HELLOACK shall be discarded
    */
   uint8_t* (* get_secret_with_helloack_sender)(struct neighbor_ids *ids);
-  
-  /** Called after the initial pairwise key establishment at startup */
-  void (* on_done)(void);
 };
 
 extern const struct apkes_scheme APKES_SCHEME;
