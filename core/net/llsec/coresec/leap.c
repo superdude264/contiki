@@ -43,6 +43,7 @@
  */
 
 #include "net/llsec/coresec/leap.h"
+#include "net/llsec/coresec/apkes-trickle.h"
 #include "sys/node-id.h"
 #include "sys/ctimer.h"
 #include "lib/aes-128.h"
@@ -107,6 +108,8 @@ erase(void *ptr)
   memset(temporary_individual_key, 0, INDIVIDUAL_KEY_LEN);
   
   PRINTF("leap: erased master key\n");
+  
+  apkes_trickle_stop();
 }
 /*---------------------------------------------------------------------------*/
 static void
