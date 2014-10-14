@@ -43,11 +43,19 @@
  */
 
 #include "net/llsec/coresec/neighbor.h"
+#include "net/llsec/coresec/apkes.h"
 #include "net/llsec/anti-replay.h"
 #include "lib/memb.h"
 #include "lib/list.h"
 #include "net/packetbuf.h"
+#include "sys/etimer.h"
 #include <string.h>
+
+#ifdef NEIGHBOR_CONF_UPDATE_CHECK_INTERVAL
+#define UPDATE_CHECK_INTERVAL NEIGHBOR_CONF_UPDATE_CHECK_INTERVAL
+#else /* NEIGHBOR_CONF_UPDATE_CHECK_INTERVAL */
+#define UPDATE_CHECK_INTERVAL (60 * 5)
+#endif /* NEIGHBOR_CONF_UPDATE_CHECK_INTERVAL */
 
 #define DEBUG 0
 #if DEBUG
@@ -59,6 +67,9 @@
 
 MEMB(neighbors_memb, struct neighbor, NEIGHBOR_MAX);
 LIST(neighbor_list);
+#if NEIGHBOR_SEND_UPDATES
+PROCESS(update_check_process, "update_check_process");
+#endif /* NEIGHBOR_SEND_UPDATES */
 
 /*---------------------------------------------------------------------------*/
 struct neighbor *
@@ -104,8 +115,7 @@ remove_expired_tentatives(void)
   
   next = list_head(neighbor_list);
   while(next) {
-    if((next->status == NEIGHBOR_TENTATIVE)
-        && (next->expiration_time <= clock_seconds())) {
+    if(next->expiration_time <= clock_seconds()) {
       to_be_removed_neighbor = next;
       next = list_item_next(next);
       neighbor_remove(to_be_removed_neighbor);
@@ -160,8 +170,11 @@ neighbor_update(struct neighbor *neighbor, uint8_t *data)
   anti_replay_init_info(&neighbor->anti_replay_info);
   neighbor->status = NEIGHBOR_PERMANENT;
   neighbor->foreign_index = data[0];
+#if NEIGHBOR_SEND_UPDATES
+  stimer_set(&neighbor->update_timer, data[1] * 60);
+#endif /* NEIGHBOR_SEND_UPDATES */
 #if NEIGHBOR_BROADCAST_KEY_LEN
-  memcpy(&neighbor->broadcast_key, data + 1, NEIGHBOR_BROADCAST_KEY_LEN);
+  memcpy(&neighbor->broadcast_key, data + 2, NEIGHBOR_BROADCAST_KEY_LEN);
 #endif /* NEIGHBOR_BROADCAST_KEY_LEN */
   
 #if DEBUG
@@ -170,6 +183,10 @@ neighbor_update(struct neighbor *neighbor, uint8_t *data)
     
     PRINTF("neighbor: Neighbor %04X:\n", neighbor->ids.short_addr);
     PRINTF("neighbor: Foreign index: %i Local index: %i\n", neighbor->foreign_index, neighbor->local_index);
+#if NEIGHBOR_SEND_UPDATES
+    PRINTF("neighbor: Expires within %lumin\n", neighbor->update_timer.interval / 60);
+#endif /* NEIGHBOR_SEND_UPDATES */
+    
 #if NEIGHBOR_BROADCAST_KEY_LEN
     PRINTF("neighbor: Broadcast key: ");
     for(i = 0; i < NEIGHBOR_BROADCAST_KEY_LEN; i++) {
@@ -199,7 +216,54 @@ neighbor_init(void)
 {
   memb_init(&neighbors_memb);
   list_init(neighbor_list);
+#if NEIGHBOR_SEND_UPDATES
+  process_start(&update_check_process, NULL);
 }
+/*---------------------------------------------------------------------------*/
+PROCESS_THREAD(update_check_process, ev, data)
+{
+  static struct etimer update_check_timer;
+  struct neighbor *next;
+  
+  PROCESS_BEGIN();
+  
+  PRINTF("neighbor: started update_check_process\n");
+  etimer_set(&update_check_timer, UPDATE_CHECK_INTERVAL * CLOCK_SECOND);
+  
+  while(1) {
+    PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&update_check_timer));
+    
+    next = list_head(neighbor_list);
+    while(next) {
+      if(!stimer_expired(&next->update_timer)
+          && (stimer_remaining(&next->update_timer) <= UPDATE_CHECK_INTERVAL + 20)) {
+        apkes_send_update(next);
+      }
+      next = list_item_next(next);
+    }
+    
+    etimer_reset(&update_check_timer);
+  }
+  
+  PROCESS_END();
+#endif /* NEIGHBOR_SEND_UPDATES */
+}
+/*---------------------------------------------------------------------------*/
+void
+neighbor_on_got_updated(struct neighbor *sender)
+{
+  sender->expiration_time = clock_seconds() + NEIGHBOR_EXPIRATION_INTERVAL * 60;/*
+  PRINTF("neighbor: Awaiting UPDATE (or another frame) in %imin\n", NEIGHBOR_EXPIRATION_INTERVAL);*/
+}
+/*---------------------------------------------------------------------------*/
+#if NEIGHBOR_SEND_UPDATES
+void
+neighbor_on_updated(struct neighbor *receiver)
+{
+  stimer_restart(&receiver->update_timer);/*
+  PRINTF("neighbor: Next UPDATE in %lumin\n", stimer_remaining(&receiver->update_timer) / 60);*/
+}
+#endif /* NEIGHBOR_SEND_UPDATES */
 /*---------------------------------------------------------------------------*/
 
 /** @} */

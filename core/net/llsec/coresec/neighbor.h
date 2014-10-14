@@ -50,6 +50,7 @@
 #include "net/linkaddr.h"
 #include "net/nbr-table.h"
 #include "sys/clock.h"
+#include "sys/stimer.h"
 
 #ifdef NEIGHBOR_CONF_MAX
 #define NEIGHBOR_MAX                    NEIGHBOR_CONF_MAX
@@ -68,6 +69,18 @@
 #else /* NEIGHBOR_CONF_PAIRWISE_KEY_LEN */
 #define NEIGHBOR_PAIRWISE_KEY_LEN       16
 #endif /* NEIGHBOR_CONF_PAIRWISE_KEY_LEN */
+
+#ifdef NEIGHBOR_CONF_EXPIRATION_INTERVAL
+#define NEIGHBOR_EXPIRATION_INTERVAL    NEIGHBOR_CONF_EXPIRATION_INTERVAL
+#else /* NEIGHBOR_CONF_EXPIRATION_INTERVAL */
+#define NEIGHBOR_EXPIRATION_INTERVAL    60
+#endif /* NEIGHBOR_CONF_EXPIRATION_INTERVAL */
+
+#ifdef NEIGHBOR_CONF_SEND_UPDATES
+#define NEIGHBOR_SEND_UPDATES           NEIGHBOR_CONF_SEND_UPDATES
+#else /* NEIGHBOR_CONF_SEND_UPDATES */
+#define NEIGHBOR_SEND_UPDATES           1
+#endif /* NEIGHBOR_CONF_SEND_UPDATES */
 
 #define NEIGHBOR_SHORT_ADDR_LEN         2
 
@@ -105,17 +118,22 @@ struct neighbor {
   /** Index on the neighboring node (permanent neighbors only) */
   uint8_t foreign_index;
   
-  union {
+#if NEIGHBOR_SEND_UPDATES
+  /** 
+   * This is when we will send an UPDATE command (unless we send
+   * a unicast to this neighbor beforehand).
+   */
+  struct stimer update_timer;
+#endif /* NEIGHBOR_SEND_UPDATES */
+  
+  /**
+   * This is when this neighbor is removed (unless an authentic
+   * frame or an UPDATE command arrives beforehand.)
+   */
+  unsigned long expiration_time;
     
-    /**
-     * Time in seconds when this neighbor expires (tentative neighbors only)
-     * TODO Could be used to automatically remove dead permanent neighbors
-     */
-    clock_time_t expiration_time;
-    
-    /** (permanent neighbors only) */
-    struct anti_replay_info anti_replay_info;
-  };
+  /** Anti-replay information */
+  struct anti_replay_info anti_replay_info;
   
   union {
   
@@ -139,6 +157,10 @@ struct neighbor *neighbor_head(void);
 struct neighbor *neighbor_next(struct neighbor *previous);
 struct neighbor *neighbor_new(void);
 struct neighbor *neighbor_get(const linkaddr_t *extended_addr);
+void neighbor_on_got_updated(struct neighbor *sender);
+#if NEIGHBOR_SEND_UPDATES
+void neighbor_on_updated(struct neighbor *receiver);
+#endif /* NEIGHBOR_SEND_UPDATES */
 void neighbor_update_ids(struct neighbor_ids *ids, void *short_addr);
 void neighbor_update(struct neighbor *neighbor, uint8_t *data);
 void neighbor_remove(struct neighbor *neighbor);

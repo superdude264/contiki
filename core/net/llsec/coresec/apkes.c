@@ -59,14 +59,17 @@
 #define HELLO_IDENTIFIER          0x0A
 #define HELLOACK_IDENTIFIER       0x0B
 #define ACK_IDENTIFIER            0x0C
+#define UPDATE_IDENTIFIER         0x0E
 
 #if EBEAP_WITH_ENCRYPTION
-/* command frame identifier || local index of receiver || broadcast key */
-#define HELLOACK_LEN              (1 + 1 + NEIGHBOR_BROADCAST_KEY_LEN)
+/* command frame identifier || local index of receiver || expiration time || broadcast key */
+#define HELLOACK_LEN              (1 + 1 + 1 + NEIGHBOR_BROADCAST_KEY_LEN)
 #else /* EBEAP_WITH_ENCRYPTION */
-/* command frame identifier || local index of receiver || short address */
-#define HELLOACK_LEN              (1 + 1 + NEIGHBOR_SHORT_ADDR_LEN)
+/* command frame identifier || local index of receiver || expiration time || short address */
+#define HELLOACK_LEN              (1 + 1 + 1 + NEIGHBOR_SHORT_ADDR_LEN)
 #endif /* EBEAP_WITH_ENCRYPTION */
+/* command frame identifier || local index of receiver || expiration time || broadcast key || short address */
+#define ACK_LEN                   (1 + 1 + 1 + NEIGHBOR_BROADCAST_KEY_LEN + NEIGHBOR_SHORT_ADDR_LEN)
 
 #define CHALLENGE_LEN             (NEIGHBOR_PAIRWISE_KEY_LEN/2)
 
@@ -91,6 +94,70 @@ MEMB(wait_timers_memb, struct wait_timer, APKES_MAX_TENTATIVE_NEIGHBORS);
 /* A random challenge, which will be attached to HELLO commands */
 static uint8_t our_challenge[CHALLENGE_LEN];
 
+/*---------------------------------------------------------------------------*/
+static uint8_t *
+prepare_ack_or_update(uint8_t command_frame_identifier, struct neighbor *receiver)
+{
+  uint8_t *payload;
+  
+  payload = coresec_prepare_command_frame(command_frame_identifier, &receiver->ids.extended_addr);
+#if EBEAP_WITH_ENCRYPTION
+  coresec_add_security_header(LLSEC802154_SECURITY_LEVEL | (1 << 2));
+  packetbuf_set_attr(PACKETBUF_ATTR_KEY_ID_MODE, FRAME802154_1_BYTE_KEY_ID_MODE);
+  packetbuf_set_attr(PACKETBUF_ATTR_KEY_INDEX, command_frame_identifier);
+#else /* EBEAP_WITH_ENCRYPTION */
+  coresec_add_security_header(LLSEC802154_SECURITY_LEVEL & 3);
+#endif /* EBEAP_WITH_ENCRYPTION */
+  
+  /* write payload */
+  memcpy(payload, &receiver->local_index, 1);
+  payload[1] = NEIGHBOR_EXPIRATION_INTERVAL;
+  payload += 2;
+#if EBEAP_WITH_ENCRYPTION
+  memcpy(payload, ebeap_broadcast_key, NEIGHBOR_BROADCAST_KEY_LEN);
+  payload += NEIGHBOR_BROADCAST_KEY_LEN;
+#endif /* LLSEC802154_USES_ENCRYPTION */
+  memcpy(payload, &node_id, NEIGHBOR_SHORT_ADDR_LEN);
+  
+  packetbuf_set_datalen(ACK_LEN);
+  
+  return payload;
+}
+/*---------------------------------------------------------------------------*/
+static void
+on_valid_ack_or_update(struct neighbor *sender, uint8_t *payload)
+{
+  neighbor_update_ids(&sender->ids, payload + 1 + 1 + NEIGHBOR_BROADCAST_KEY_LEN);
+  neighbor_update(sender, payload);
+}
+/*---------------------------------------------------------------------------*/
+void
+apkes_send_update(struct neighbor *receiver)
+{
+  PRINTF("apkes: Sending UPDATE\n");
+  
+  prepare_ack_or_update(UPDATE_IDENTIFIER, receiver);
+#if NEIGHBOR_SEND_UPDATES
+  neighbor_on_updated(receiver);
+#endif /* NEIGHBOR_SEND_UPDATES */
+  coresec_send_command_frame();
+}
+/*---------------------------------------------------------------------------*/
+static void
+on_update(struct neighbor *sender, uint8_t *payload)
+{
+  PRINTF("apkes: Received UPDATE\n");
+  
+  if(!sender
+      || (sender->status != NEIGHBOR_PERMANENT)
+      || !coresec_decrypt_verify_unicast(sender->pairwise_key)
+      || anti_replay_was_replayed(&sender->anti_replay_info)) {
+    PRINTF("apkes: Invalid UPDATE\n");
+    return;
+  }
+  
+  on_valid_ack_or_update(sender, payload);
+}
 /*---------------------------------------------------------------------------*/
 static void
 generate_pairwise_key(uint8_t *result, uint8_t *shared_secret)
@@ -192,11 +259,12 @@ send_helloack(struct neighbor *receiver)
 #endif /* EBEAP_WITH_ENCRYPTION */
   
   /* write payload */
-  memcpy(payload, &receiver->local_index, 1);
+  payload[0] = receiver->local_index;
+  payload[1] = NEIGHBOR_EXPIRATION_INTERVAL;
 #if EBEAP_WITH_ENCRYPTION
-  memcpy(payload + 1, ebeap_broadcast_key, NEIGHBOR_BROADCAST_KEY_LEN);
+  memcpy(payload + 2, ebeap_broadcast_key, NEIGHBOR_BROADCAST_KEY_LEN);
 #else /* EBEAP_WITH_ENCRYPTION */
-  memcpy(payload + 1, &node_id, NEIGHBOR_SHORT_ADDR_LEN);
+  memcpy(payload + 2, &node_id, NEIGHBOR_SHORT_ADDR_LEN);
 #endif /* EBEAP_WITH_ENCRYPTION */
   
   packetbuf_set_datalen(HELLOACK_LEN);
@@ -241,8 +309,7 @@ on_helloack(struct neighbor *sender, uint8_t *payload)
   short_addr = packetbuf_attr(PACKETBUF_ATTR_KEY_SOURCE_BYTES_0_1);
   neighbor_update_ids(&ids, &short_addr);
 #else /* EBEAP_WITH_ENCRYPTION */
-  neighbor_update_ids(&ids,
-      payload + 1);
+  neighbor_update_ids(&ids, payload + 2);
 #endif /* EBEAP_WITH_ENCRYPTION */
   
   secret = APKES_SCHEME.get_secret_with_helloack_sender(&ids);
@@ -296,34 +363,7 @@ on_helloack(struct neighbor *sender, uint8_t *payload)
 static void
 send_ack(struct neighbor *receiver)
 {
-  uint8_t *payload;
-  
-  payload = coresec_prepare_command_frame(ACK_IDENTIFIER, &receiver->ids.extended_addr);
-#if EBEAP_WITH_ENCRYPTION
-  coresec_add_security_header(LLSEC802154_SECURITY_LEVEL | (1 << 2));
-  packetbuf_set_attr(PACKETBUF_ATTR_KEY_ID_MODE, FRAME802154_1_BYTE_KEY_ID_MODE);
-  packetbuf_set_attr(PACKETBUF_ATTR_KEY_INDEX, ACK_IDENTIFIER);
-#else /* EBEAP_WITH_ENCRYPTION */
-  coresec_add_security_header(LLSEC802154_SECURITY_LEVEL & 3);
-#endif /* EBEAP_WITH_ENCRYPTION */
-  
-  /* write payload */
-  memcpy(payload, &receiver->local_index, 1);
-  payload += 1;
-#if EBEAP_WITH_ENCRYPTION
-  memcpy(payload + 1, ebeap_broadcast_key, NEIGHBOR_BROADCAST_KEY_LEN);
-  payload += NEIGHBOR_BROADCAST_KEY_LEN;
-#endif /* LLSEC802154_USES_ENCRYPTION */
-  /* TODO ACKs should be sent with short address as source address */ 
-  memcpy(payload, &node_id, NEIGHBOR_SHORT_ADDR_LEN);
-  
-  packetbuf_set_datalen(1            /* command frame identifier */
-      + 1                            /* local index of receiver */
-#if LLSEC802154_USES_ENCRYPTION
-      + NEIGHBOR_BROADCAST_KEY_LEN   /* broadcast key */
-#endif /* LLSEC802154_USES_ENCRYPTION */
-      + NEIGHBOR_SHORT_ADDR_LEN);    /* short address */
-  
+  prepare_ack_or_update(ACK_IDENTIFIER, receiver);
   coresec_send_command_frame();
 }
 /*---------------------------------------------------------------------------*/
@@ -337,8 +377,7 @@ on_ack(struct neighbor *sender, uint8_t *payload)
       || !coresec_decrypt_verify_unicast(sender->pairwise_key)) {
     PRINTF("apkes: Invalid ACK\n");
   } else {
-    neighbor_update_ids(&sender->ids, payload + 1 + NEIGHBOR_BROADCAST_KEY_LEN);
-    neighbor_update(sender, payload);
+    on_valid_ack_or_update(sender, payload);
     apkes_trickle_on_new_neighbor();
   }
 }
@@ -357,6 +396,9 @@ on_command_frame(uint8_t command_frame_identifier,
     break;
   case ACK_IDENTIFIER:
     on_ack(sender, payload);
+    break;
+  case UPDATE_IDENTIFIER:
+    on_update(sender, payload);
     break;
   default:
     PRINTF("apkes: Received unknown command with identifier %x \n", command_frame_identifier);

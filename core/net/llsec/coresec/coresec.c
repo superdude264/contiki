@@ -164,6 +164,9 @@ send(mac_callback_t sent, void *ptr)
     ebeap_send_broadcast(sent, ptr);
   } else {
     /* unicast */
+#if NEIGHBOR_SEND_UPDATES
+    neighbor_on_updated(neighbor_get(packetbuf_addr(PACKETBUF_ADDR_RECEIVER)));
+#endif /* NEIGHBOR_SEND_UPDATES */
     coresec_add_security_header(LLSEC802154_SECURITY_LEVEL);
     NETSTACK_MAC.send(sent, ptr);
   }
@@ -239,6 +242,8 @@ input(void)
       PRINTF("coresec: Replayed\n");
       return;
     }
+    
+    neighbor_on_got_updated(sender);
     
     NETSTACK_NETWORK.input();
   }
