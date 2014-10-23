@@ -61,6 +61,7 @@
 #define ACK_IDENTIFIER            0x0C
 #define UPDATE_IDENTIFIER         0x0E
 
+//TODO: look at this code...
 #if EBEAP_WITH_ENCRYPTION
 /* command frame identifier || local index of receiver || expiration time || broadcast key */
 #define HELLOACK_LEN              (1 + 1 + 1 + NEIGHBOR_BROADCAST_KEY_LEN)
@@ -95,6 +96,7 @@ MEMB(wait_timers_memb, struct wait_timer, APKES_MAX_TENTATIVE_NEIGHBORS);
 static uint8_t our_challenge[CHALLENGE_LEN];
 
 /*---------------------------------------------------------------------------*/
+//TODO: look at this function
 static uint8_t *
 prepare_ack_or_update(uint8_t command_frame_identifier, struct neighbor *receiver)
 {
@@ -124,6 +126,7 @@ prepare_ack_or_update(uint8_t command_frame_identifier, struct neighbor *receive
   return payload;
 }
 /*---------------------------------------------------------------------------*/
+//TODO: look at this function
 static void
 on_valid_ack_or_update(struct neighbor *sender, uint8_t *payload)
 {
@@ -143,6 +146,7 @@ apkes_send_update(struct neighbor *receiver)
   coresec_send_command_frame();
 }
 /*---------------------------------------------------------------------------*/
+//TODO: look at this function
 static void
 on_update(struct neighbor *sender, uint8_t *payload)
 {
@@ -159,6 +163,8 @@ on_update(struct neighbor *sender, uint8_t *payload)
   on_valid_ack_or_update(sender, payload);
 }
 /*---------------------------------------------------------------------------*/
+
+//TODO: look at this function further....
 static void
 generate_pairwise_key(uint8_t *result, uint8_t *shared_secret)
 {
@@ -166,6 +172,7 @@ generate_pairwise_key(uint8_t *result, uint8_t *shared_secret)
   aes_128_padded_encrypt(result, NEIGHBOR_PAIRWISE_KEY_LEN);
 }
 /*---------------------------------------------------------------------------*/
+//TODO: Hello, HelloACK, & ACK key parts of pairwise key establishment. Look at all related functions and put results together
 void
 apkes_broadcast_hello(void)
 {
@@ -186,6 +193,7 @@ apkes_broadcast_hello(void)
   coresec_send_command_frame();
 }
 /*---------------------------------------------------------------------------*/
+//TODO: look at this function
 static void
 on_hello(struct neighbor *sender, uint8_t *payload)
 {
@@ -225,6 +233,7 @@ on_hello(struct neighbor *sender, uint8_t *payload)
   PRINTF("apkes: Will send HELLOACK in %lus\n", waiting_period / CLOCK_SECOND);
 }
 /*---------------------------------------------------------------------------*/
+//TODO: look at this function (designed to not get overwhelmed by compromised nodes sending HELLOACKs) 
 static void
 wait_callback(void *ptr)
 {
@@ -242,6 +251,7 @@ wait_callback(void *ptr)
   memb_free(&wait_timers_memb, expired_wait_timer);
 }
 /*---------------------------------------------------------------------------*/
+//TODO: look at this function
 static void
 send_helloack(struct neighbor *receiver)
 {
@@ -293,6 +303,7 @@ on_frame_secured(struct neighbor *neighbor)
   }
 }
 /*---------------------------------------------------------------------------*/
+//TODO: look at this function
 static void
 on_helloack(struct neighbor *sender, uint8_t *payload)
 {
@@ -360,6 +371,7 @@ on_helloack(struct neighbor *sender, uint8_t *payload)
   apkes_trickle_on_new_neighbor();
 }
 /*---------------------------------------------------------------------------*/
+//TODO: look at this function
 static void
 send_ack(struct neighbor *receiver)
 {
@@ -367,6 +379,7 @@ send_ack(struct neighbor *receiver)
   coresec_send_command_frame();
 }
 /*---------------------------------------------------------------------------*/
+//TODO: look at this function
 static void
 on_ack(struct neighbor *sender, uint8_t *payload)
 {
@@ -405,6 +418,7 @@ on_command_frame(uint8_t command_frame_identifier,
   }
 }
 /*---------------------------------------------------------------------------*/
+//TODO: analyze whether or not to start CBMC analysis at this function
 void
 apkes_init(void)
 {

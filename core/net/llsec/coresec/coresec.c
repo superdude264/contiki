@@ -66,6 +66,7 @@
 #endif /* DEBUG */
 
 /*---------------------------------------------------------------------------*/
+//TODO: look further at this function...
 void
 coresec_add_security_header(uint8_t sec_lvl)
 {
@@ -203,6 +204,7 @@ on_frame_created(void)
   return 1;
 }
 /*---------------------------------------------------------------------------*/
+//input -> neighbor_on_got_updated(sender)
 static void
 input(void)
 {

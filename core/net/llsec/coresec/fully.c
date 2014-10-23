@@ -50,6 +50,7 @@
 static uint8_t key[AES_128_BLOCK_SIZE];
 
 /*---------------------------------------------------------------------------*/
+//TODO: look further at this function...
 static uint8_t *
 get_secret_with(struct neighbor_ids *ids)
 {
@@ -63,6 +64,7 @@ get_secret_with(struct neighbor_ids *ids)
   return key;
 }
 /*---------------------------------------------------------------------------*/
+//TODO: see where this used (presumably when compromised nodes need to be ignored)
 static void
 ignore(void)
 {

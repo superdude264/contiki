@@ -107,6 +107,7 @@ add(struct neighbor *new_neighbor)
   }
 }
 /*---------------------------------------------------------------------------*/
+//TODO: look further at this function...
 static void
 remove_expired_tentatives(void)
 {
@@ -204,6 +205,7 @@ neighbor_update(struct neighbor *neighbor, uint8_t *data)
 #endif /* DEBUG */
 }
 /*---------------------------------------------------------------------------*/
+//TODO: see when this function is called (especially in security context)
 void
 neighbor_remove(struct neighbor *neighbor)
 {
@@ -211,6 +213,7 @@ neighbor_remove(struct neighbor *neighbor)
   memb_free(&neighbors_memb, neighbor);
 }
 /*---------------------------------------------------------------------------*/
+//TODO: look further at this function (and all neighbor functions as they are used in larger context...)
 void
 neighbor_init(void)
 {

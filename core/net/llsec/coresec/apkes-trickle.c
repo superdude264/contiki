@@ -101,6 +101,7 @@ bootstrap(void)
   }
 }
 /*---------------------------------------------------------------------------*/
+//TODO: look at this function
 static clock_time_t
 interval_size(void)
 {
@@ -130,6 +131,7 @@ broadcast_hello(void *ptr)
 }
 /*---------------------------------------------------------------------------*/
 /* Corresponds to Rule 6 of Trickle */
+//TODO: look at this function
 static void
 on_interval_expired(void *ptr)
 {
