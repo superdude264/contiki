@@ -66,7 +66,6 @@
 #endif /* DEBUG */
 
 /*---------------------------------------------------------------------------*/
-//TODO: look further at this function...
 void
 coresec_add_security_header(uint8_t sec_lvl)
 {

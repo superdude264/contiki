@@ -61,7 +61,6 @@
 #define ACK_IDENTIFIER            0x0C
 #define UPDATE_IDENTIFIER         0x0E
 
-//TODO: look at this code...
 #if EBEAP_WITH_ENCRYPTION
 /* command frame identifier || local index of receiver || expiration time || broadcast key */
 #define HELLOACK_LEN              (1 + 1 + 1 + NEIGHBOR_BROADCAST_KEY_LEN)
@@ -96,7 +95,6 @@ MEMB(wait_timers_memb, struct wait_timer, APKES_MAX_TENTATIVE_NEIGHBORS);
 static uint8_t our_challenge[CHALLENGE_LEN];
 
 /*---------------------------------------------------------------------------*/
-//TODO: look at this function
 static uint8_t *
 prepare_ack_or_update(uint8_t command_frame_identifier, struct neighbor *receiver)
 {
@@ -123,10 +121,10 @@ prepare_ack_or_update(uint8_t command_frame_identifier, struct neighbor *receive
   
   packetbuf_set_datalen(ACK_LEN);
   
+  //TODO: prove variant that payload for ACK is structured exactly as necessary? (for ACK case only of course...)
   return payload;
 }
 /*---------------------------------------------------------------------------*/
-//TODO: look at this function
 static void
 on_valid_ack_or_update(struct neighbor *sender, uint8_t *payload)
 {
@@ -146,7 +144,6 @@ apkes_send_update(struct neighbor *receiver)
   coresec_send_command_frame();
 }
 /*---------------------------------------------------------------------------*/
-//TODO: look at this function
 static void
 on_update(struct neighbor *sender, uint8_t *payload)
 {
@@ -163,16 +160,14 @@ on_update(struct neighbor *sender, uint8_t *payload)
   on_valid_ack_or_update(sender, payload);
 }
 /*---------------------------------------------------------------------------*/
-
-//TODO: look at this function further....
 static void
 generate_pairwise_key(uint8_t *result, uint8_t *shared_secret)
 {
+  //TODO: prove invariants about proper setting of pairwise key and encryption of result?
   CORESEC_SET_PAIRWISE_KEY(shared_secret);
   aes_128_padded_encrypt(result, NEIGHBOR_PAIRWISE_KEY_LEN);
 }
 /*---------------------------------------------------------------------------*/
-//TODO: Hello, HelloACK, & ACK key parts of pairwise key establishment. Look at all related functions and put results together
 void
 apkes_broadcast_hello(void)
 {
@@ -190,10 +185,10 @@ apkes_broadcast_hello(void)
       + CHALLENGE_LEN             /* challenge */
       + NEIGHBOR_SHORT_ADDR_LEN); /* short address */
   
+  //TODO: verify what is actually sent is proper "HELLO" packet?
   coresec_send_command_frame();
 }
 /*---------------------------------------------------------------------------*/
-//TODO: look at this function
 static void
 on_hello(struct neighbor *sender, uint8_t *payload)
 {
@@ -202,6 +197,7 @@ on_hello(struct neighbor *sender, uint8_t *payload)
   
   PRINTF("apkes: Received HELLO\n");
   
+  //TODO: verify HELLO flood actually prevented here?
   free_wait_timer = memb_alloc(&wait_timers_memb);
   if(!free_wait_timer) {
     PRINTF("apkes: HELLO flood?\n");
@@ -222,6 +218,7 @@ on_hello(struct neighbor *sender, uint8_t *payload)
   prng_rand(sender->metadata + CHALLENGE_LEN, CHALLENGE_LEN);
   
   /* Set up waiting period */
+  //TODO: see if can verify waiting property below using CBMC...
   waiting_period = (APKES_MAX_WAITING_PERIOD * (uint32_t) random_rand()) / RANDOM_RAND_MAX;
   sender->expiration_time = clock_seconds() + ((APKES_MAX_WAITING_PERIOD + APKES_ACK_DELAY) / CLOCK_SECOND);
   free_wait_timer->neighbor = sender;
@@ -233,7 +230,7 @@ on_hello(struct neighbor *sender, uint8_t *payload)
   PRINTF("apkes: Will send HELLOACK in %lus\n", waiting_period / CLOCK_SECOND);
 }
 /*---------------------------------------------------------------------------*/
-//TODO: look at this function (designed to not get overwhelmed by compromised nodes sending HELLOACKs) 
+//TODO: verify (manually?) tentative neighbor properties in Sec. 4.2 respected?
 static void
 wait_callback(void *ptr)
 {
@@ -251,7 +248,6 @@ wait_callback(void *ptr)
   memb_free(&wait_timers_memb, expired_wait_timer);
 }
 /*---------------------------------------------------------------------------*/
-//TODO: look at this function
 static void
 send_helloack(struct neighbor *receiver)
 {
@@ -284,6 +280,7 @@ send_helloack(struct neighbor *receiver)
       receiver->metadata + CHALLENGE_LEN,
       CHALLENGE_LEN);
   
+  //TODO: verify that secret at time of "HELLOACK" sending is right one?
   secret = APKES_SCHEME.get_secret_with_hello_sender(&receiver->ids);
   if(!secret) {
     PRINTF("apkes: could not get secret with HELLO sender\n");
@@ -303,7 +300,6 @@ on_frame_secured(struct neighbor *neighbor)
   }
 }
 /*---------------------------------------------------------------------------*/
-//TODO: look at this function
 static void
 on_helloack(struct neighbor *sender, uint8_t *payload)
 {
@@ -322,7 +318,7 @@ on_helloack(struct neighbor *sender, uint8_t *payload)
 #else /* EBEAP_WITH_ENCRYPTION */
   neighbor_update_ids(&ids, payload + 2);
 #endif /* EBEAP_WITH_ENCRYPTION */
-  
+  //TODO: verify that will always have right neighbor ids (and if compromised node neighbor, will be ignored)?
   secret = APKES_SCHEME.get_secret_with_helloack_sender(&ids);
   if(!secret) {
     PRINTF("apkes: could not get secret with HELLOACK sender\n");
@@ -347,6 +343,8 @@ on_helloack(struct neighbor *sender, uint8_t *payload)
   if(sender) {
     switch(sender->status) {
     case(NEIGHBOR_PERMANENT):
+      //TODO: verify that anti_replay_was_replayed works properly in prevention of replay attacks?
+      //("anti_replay_was_replayed" function in anti-replay.c...)
       if(anti_replay_was_replayed(&sender->anti_replay_info)) {
         return;
       }
@@ -371,7 +369,6 @@ on_helloack(struct neighbor *sender, uint8_t *payload)
   apkes_trickle_on_new_neighbor();
 }
 /*---------------------------------------------------------------------------*/
-//TODO: look at this function
 static void
 send_ack(struct neighbor *receiver)
 {
@@ -379,10 +376,10 @@ send_ack(struct neighbor *receiver)
   coresec_send_command_frame();
 }
 /*---------------------------------------------------------------------------*/
-//TODO: look at this function
 static void
 on_ack(struct neighbor *sender, uint8_t *payload)
 {
+  //TODO: verify that "apkes_trickle_on_new_neighbor" works properly?
   PRINTF("apkes: Received ACK\n");
   
   if(!sender
@@ -400,6 +397,7 @@ on_command_frame(uint8_t command_frame_identifier,
     struct neighbor *sender,
     uint8_t *payload)
 {
+  //TODO: see if malformed packets can throw off handling of payload below?
   switch(command_frame_identifier) {
   case HELLO_IDENTIFIER:
     on_hello(sender, payload);
@@ -418,7 +416,6 @@ on_command_frame(uint8_t command_frame_identifier,
   }
 }
 /*---------------------------------------------------------------------------*/
-//TODO: analyze whether or not to start CBMC analysis at this function
 void
 apkes_init(void)
 {

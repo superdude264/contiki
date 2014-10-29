@@ -54,6 +54,7 @@ static uint8_t key[AES_128_BLOCK_SIZE];
 static uint8_t *
 get_secret_with(struct neighbor_ids *ids)
 {
+  //TODO: verify can only get secret with proper neighbors (and how handle compromised neighbors?)
   if(ids->short_addr >= FULLY_MAX_NODES) {
     return NULL;
   }

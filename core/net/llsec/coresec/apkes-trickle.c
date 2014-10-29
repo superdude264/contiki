@@ -101,7 +101,7 @@ bootstrap(void)
   }
 }
 /*---------------------------------------------------------------------------*/
-//TODO: look at this function
+//TODO: look at this function and especially its use elsewhere
 static clock_time_t
 interval_size(void)
 {
@@ -117,6 +117,7 @@ round_up(clock_time_t I_minus_t)
 }
 /*---------------------------------------------------------------------------*/
 /* Corresponds to Rule 4 of Trickle */
+//Trickle rules found in RFC 6206
 static void
 broadcast_hello(void *ptr)
 {
@@ -131,7 +132,7 @@ broadcast_hello(void *ptr)
 }
 /*---------------------------------------------------------------------------*/
 /* Corresponds to Rule 6 of Trickle */
-//TODO: look at this function
+//TODO: verify that RFC rule followed and handling of intervals in response to # of neighbors respects paper properties
 static void
 on_interval_expired(void *ptr)
 {
@@ -158,6 +159,7 @@ on_interval_expired(void *ptr)
 void
 apkes_trickle_on_new_neighbor(void)
 {
+  //TODO: verify that "apkes_trickle_reset" cannot be circumvented? (eventually calls "on_interval_expired", could something bad happen there?)
   if(++new_neighbors_count == RESET_THRESHOLD) {
     apkes_trickle_reset();
   }

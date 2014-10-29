@@ -71,6 +71,7 @@ LIST(neighbor_list);
 PROCESS(update_check_process, "update_check_process");
 #endif /* NEIGHBOR_SEND_UPDATES */
 
+//TODO: verify that neighbor addition, removal only works with neighbor in question and doesn't "mess up" neighbor list?
 /*---------------------------------------------------------------------------*/
 struct neighbor *
 neighbor_head(void)
@@ -107,7 +108,7 @@ add(struct neighbor *new_neighbor)
   }
 }
 /*---------------------------------------------------------------------------*/
-//TODO: look further at this function...
+//TODO: verify only expired neighbors removed? (and what about compromised neighbors?)
 static void
 remove_expired_tentatives(void)
 {
@@ -165,6 +166,7 @@ neighbor_update_ids(struct neighbor_ids *ids, void *short_addr)
   memcpy(&ids->short_addr, short_addr, NEIGHBOR_SHORT_ADDR_LEN);
 }
 /*---------------------------------------------------------------------------*/
+//TODO: see if neighbor_update will always update right neighbor w/right data (& check in context of other functions)?
 void
 neighbor_update(struct neighbor *neighbor, uint8_t *data)
 {
@@ -205,7 +207,6 @@ neighbor_update(struct neighbor *neighbor, uint8_t *data)
 #endif /* DEBUG */
 }
 /*---------------------------------------------------------------------------*/
-//TODO: see when this function is called (especially in security context)
 void
 neighbor_remove(struct neighbor *neighbor)
 {
