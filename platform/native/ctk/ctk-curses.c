@@ -486,13 +486,13 @@ ctk_mouse_y(void)
   return ypos;
 }
 /*-----------------------------------------------------------------------------------*/
-unsigned short
+unsigned char
 ctk_mouse_xtoc(unsigned short x)
 {
   return x;
 }
 /*-----------------------------------------------------------------------------------*/
-unsigned short
+unsigned char
 ctk_mouse_ytoc(unsigned short y)
 {
   return y;

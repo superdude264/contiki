@@ -5,3 +5,8 @@ all: $(CONTIKI_PROJECT)
 
 CONTIKI = ../..
 include $(CONTIKI)/Makefile.include
+
+CC = goto-cc
+LD = goto-cc
+print: 
+	echo CC=$(CC) LD=$(LD)
