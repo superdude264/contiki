@@ -240,6 +240,10 @@ wait_callback(void *ptr)
   
   expired_wait_timer = (struct wait_timer *) ptr;
   
+  /*TODO: Is HELLOACK message sent to original sender given it sent proper HELLO earlier?
+          (and timeout followed properly?). If not, is connection aborted? (focus more on behavior
+          related to handling of timeout)
+  */
   if(expired_wait_timer->neighbor->status == NEIGHBOR_TENTATIVE) {
     expired_wait_timer->neighbor->status = NEIGHBOR_AWAITING_ACK;
     send_helloack(expired_wait_timer->neighbor);
@@ -248,6 +252,9 @@ wait_callback(void *ptr)
   memb_free(&wait_timers_memb, expired_wait_timer);
 }
 /*---------------------------------------------------------------------------*/
+/*TODO: Is proper HELLOACK message sent to original sender given it sent proper HELLO earlier?
+          If no proper earlier HELLO, is connection aborted?
+*/
 static void
 send_helloack(struct neighbor *receiver)
 {
@@ -280,7 +287,6 @@ send_helloack(struct neighbor *receiver)
       receiver->metadata + CHALLENGE_LEN,
       CHALLENGE_LEN);
   
-  //TODO: verify that secret at time of "HELLOACK" sending is right one?
   secret = APKES_SCHEME.get_secret_with_hello_sender(&receiver->ids);
   if(!secret) {
     PRINTF("apkes: could not get secret with HELLO sender\n");
@@ -335,6 +341,7 @@ on_helloack(struct neighbor *sender, uint8_t *payload)
   packetbuf_set_datalen(packetbuf_datalen() - CHALLENGE_LEN);
   
   generate_pairwise_key(key, secret);
+  //TODO: see if invalid HELLOACK from receiver causes connection to abort (seems to be case at first glance...)
   if(!coresec_decrypt_verify_unicast(key)) {
     PRINTF("apkes: Invalid HELLOACK\n");
     return;
@@ -365,6 +372,7 @@ on_helloack(struct neighbor *sender, uint8_t *payload)
   memcpy(sender->pairwise_key, key, NEIGHBOR_PAIRWISE_KEY_LEN);
   sender->ids = ids;
   neighbor_update(sender, payload);
+  //TODO: see if valid ACK always sent back to receiver if HELLOACK from it is valid according to protocol
   send_ack(sender);
   apkes_trickle_on_new_neighbor();
 }
@@ -372,6 +380,7 @@ on_helloack(struct neighbor *sender, uint8_t *payload)
 static void
 send_ack(struct neighbor *receiver)
 {
+  //TODO: see if valid ACK always built and sent properly here...
   prepare_ack_or_update(ACK_IDENTIFIER, receiver);
   coresec_send_command_frame();
 }
@@ -382,6 +391,10 @@ on_ack(struct neighbor *sender, uint8_t *payload)
   //TODO: verify that "apkes_trickle_on_new_neighbor" works properly?
   PRINTF("apkes: Received ACK\n");
   
+  /*TODO: given that earlier stages of protocol work, if valid ACK received, CCM*-MIC verified?
+          (If valid, should go on to "on_valid_ack_or_update" function; otherwise, is connection
+           aborted?)
+  */
   if(!sender
       || (sender->status != NEIGHBOR_AWAITING_ACK)
       || !coresec_decrypt_verify_unicast(sender->pairwise_key)) {
